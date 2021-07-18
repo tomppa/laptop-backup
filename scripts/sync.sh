@@ -13,6 +13,7 @@ declare -a excludes
 
 function loadProperties {
     local file="$CONFIG_FOLDER/$PROP_FILE"
+
     if [[ ! -f "$file" ]]; then
         echo "$PROP_FILE not found!"
         return 2
@@ -39,9 +40,10 @@ function loadProperties {
 }
 
 function checkBucket {
-    local params=()
+    declare -a params
     params+=(--bucket "${properties[s3_bucket]}")
     params+=(--profile="${properties[aws_profile]}")
+    
     local bucketStatus=$(aws s3api head-bucket ${params[@]} 2>&1)
     
     if [[ -z "$bucketStatus" ]]; then
@@ -63,7 +65,7 @@ function checkBucket {
 }
 
 function sync {
-    local params=()
+    declare -a params
     local local_folder="$HOME/$1"
     local bucket_folder="s3://${properties[s3_bucket]}$local_folder"
 
@@ -120,6 +122,10 @@ if [[ $? != 0 ]]; then
 fi
 
 backup_config_folder="$CONFIG_FOLDER/${properties[backup_folder]}"
+
+# Change shell options (shopt) to include filenames beginning with a dot
+# in the file name expansion.
+shopt -s dotglob
 
 for folder in $backup_config_folder; do
     if [[ -d "$folder" && ! -L "$folder" ]]; then
