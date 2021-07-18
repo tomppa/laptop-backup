@@ -1,13 +1,20 @@
 #!/bin/bash
 
 DEBUG="${1:-''}"
-CONFIG_FOLDER='../config'
+
+# Get the current directory where this file is, so that the script can
+# called from other directories without breaking up.
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
+
+CONFIG_FOLDER="$DIR/../config"
 PROP_FILE='configuration.properties'
 
-# properties is an associated array, i.e. keys can be strings or variables
+# properties is an associated array, i.e., keys can be strings or variables
+# think Java HashMap or JavaScript Object
 declare -A properties
 
 # includes and excludes are Bash arrays, i.e., with auto-numbered keys
+# think Java or JavaScript array
 declare -a includes
 declare -a excludes
 
@@ -40,12 +47,16 @@ function loadProperties {
 }
 
 function checkBucket {
+    # Declare inside a function automatically makes the variable a local
+    # variable.S
     declare -a params
     params+=(--bucket "${properties[s3_bucket]}")
     params+=(--profile="${properties[aws_profile]}")
-    
+
     local bucketStatus=$(aws s3api head-bucket ${params[@]} 2>&1)
     
+    # The 'aws s3api head-bucket' returns an empty response, if everything's
+    # ok or an error message, if something went wrong.
     if [[ -z "$bucketStatus" ]]; then
         echo "Bucket \"${properties[s3_bucket]}\" owned and exists";
         return 0
@@ -105,12 +116,16 @@ function reset {
     declare -a includes excludes
 }
 
+# set -x shows the actual commands executed by the script, much better than
+# trying to run echo or printf with each command separately.
 if [[ "$DEBUG" == "--debug" ]]; then
     set -x
 fi
 
 loadProperties
 
+# $? gives the return value of previous function call, non-zero value means
+# that an error of some type occured
 if [[ $? != 0 ]]; then
     exit
 fi
@@ -127,7 +142,9 @@ backup_config_folder="$CONFIG_FOLDER/${properties[backup_folder]}"
 # in the file name expansion.
 shopt -s dotglob
 
+# Loop through files in given path.
 for folder in $backup_config_folder; do
+    # Check that file is a folder, and that it's not a symbolic link.
     if [[ -d "$folder" && ! -L "$folder" ]]; then
         read_parameters "$folder/${properties[exclude_file_name]}" exclude
         read_parameters "$folder/${properties[include_file_name]}" include
