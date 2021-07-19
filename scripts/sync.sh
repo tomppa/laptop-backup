@@ -9,14 +9,13 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 CONFIG_FOLDER="$DIR/../config"
 PROP_FILE='configuration.properties'
 
-# properties is an associated array, i.e., keys can be strings or variables
+# This is an associated array, i.e., keys can be strings or variables
 # think Java HashMap or JavaScript Object
 declare -A properties
 
-# includes and excludes are Bash arrays, i.e., with auto-numbered keys
+# These are Bash arrays, i.e., with auto-numbered keys
 # think Java or JavaScript array
-declare -a includes
-declare -a excludes
+declare -a includes excludes params
 
 function loadProperties {
     local file="$CONFIG_FOLDER/$PROP_FILE"
@@ -75,8 +74,7 @@ function checkBucket {
     fi
 }
 
-function sync {
-    declare -a params
+function create_params {
     local local_folder="$HOME/$1"
     local bucket_folder="s3://${properties[s3_bucket]}$local_folder"
 
@@ -96,7 +94,30 @@ function sync {
         params+=(--dryrun)
     fi
 
+    if [[ "$DEBUG" == "--debug" ]]; then
+        declare -p params
+    fi
+}
+
+# Sync is automatically recursive, and it can't be turned off. Thus,
+# use copy when need to avoid recursion.
+function sync {
     aws s3 sync "${params[@]}"
+}
+
+function copy {
+    local basePath="${params[0]}*"
+
+    # Loop through files in given path.
+    for file in $basePath; do
+        # Check that file is not a folder or a symbolic link.
+        if [[ ! -d "$file" && ! -L "$file" ]]; then
+            # Remove first parameter, i.e., local folder, since with copy, we
+            # need to specify individual files instead of the base folder.
+            unset params[0]
+            aws s3 cp "$file" "${params[@]}"
+        fi
+    done
 }
 
 function read_parameters {
@@ -112,8 +133,25 @@ function read_parameters {
 }
 
 function reset {
-    unset includes excludes
-    declare -a includes excludes
+    unset includes excludes params
+}
+
+function handleFolder {
+    read_parameters "${1}/${properties[exclude_file_name]}" exclude
+    read_parameters "${1}/${properties[include_file_name]}" include
+    
+    # Remove the path until the last forward slash.
+    create_params "${1##*/}"
+    
+    if [[ "$2" == "sync" ]]; then
+        sync
+    elif [[ "$2" == "copy" ]]; then
+        copy
+    else
+        echo "Don't know what to do."
+    fi
+
+    reset
 }
 
 # set -x shows the actual commands executed by the script, much better than
@@ -136,19 +174,23 @@ if [[ $? != 0 ]]; then
     exit
 fi
 
-backup_config_folder="$CONFIG_FOLDER/${properties[backup_folder]}"
+# Add the asterisk in the end for the for loop to work, i.e.,
+# to loop through all files in the folder.
+backup_config_folder="$CONFIG_FOLDER/${properties[backup_folder]}*"
 
 # Change shell options (shopt) to include filenames beginning with a dot
 # in the file name expansion.
 shopt -s dotglob
 
-# Loop through files in given path.
+# Loop through files in given path, i.e., subfolders of home folder.
 for folder in $backup_config_folder; do
     # Check that file is a folder, and that it's not a symbolic link.
     if [[ -d "$folder" && ! -L "$folder" ]]; then
-        read_parameters "$folder/${properties[exclude_file_name]}" exclude
-        read_parameters "$folder/${properties[include_file_name]}" include
-        sync "${folder##*/}"
-        reset
+        handleFolder "$folder" "sync"
     fi
 done
+
+# Also include the files in home folder itself, but use copy to avoid
+# recursion.
+# Remove the asterisk from the end of the config path.
+handleFolder "${backup_config_folder::-1}" "copy"
