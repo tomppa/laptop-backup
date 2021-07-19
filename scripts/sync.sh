@@ -45,9 +45,29 @@ function loadProperties {
     fi
 }
 
-function checkBucket {
+function getBucketName {
     # Declare inside a function automatically makes the variable a local
-    # variable.S
+    # variable.
+    declare -a params
+    params+=(--name "${properties[bucket_parameter_name]}")
+    params+=(--profile="${properties[aws_profile]}")
+
+    # Get the bucket name from SSM Parameter Store, where it's stored.
+    # Logic is:
+    # 1) run the AWS CLI command
+    # 2) grab 5th line from the output with sed
+    # 3) grab the 2nd word of the line with awk
+    # 4) substitute first all double quotes with empty string,
+    #    and then all commas with empty string, using sed
+    local bucketName=$(aws ssm get-parameter "${params[@]}" | \
+                       sed -n '5p' | \
+                       awk '{ print $2 }' | \
+                       sed -e 's/"//g' -e 's/,//g')
+
+    properties[s3_bucket]="$bucketName"
+}
+
+function checkBucket {
     declare -a params
     params+=(--bucket "${properties[s3_bucket]}")
     params+=(--profile="${properties[aws_profile]}")
@@ -164,6 +184,12 @@ loadProperties
 
 # $? gives the return value of previous function call, non-zero value means
 # that an error of some type occured
+if [[ $? != 0 ]]; then
+    exit
+fi
+
+getBucketName
+
 if [[ $? != 0 ]]; then
     exit
 fi

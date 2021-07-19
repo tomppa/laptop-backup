@@ -2,9 +2,11 @@ import * as cdk from '@aws-cdk/core';
 
 import * as kms from '@aws-cdk/aws-kms';
 import * as s3 from '@aws-cdk/aws-s3';
+import * as ssm from '@aws-cdk/aws-ssm';
 
 import { BlockPublicAccess, StorageClass } from '@aws-cdk/aws-s3';
 import { Duration, RemovalPolicy } from '@aws-cdk/core';
+import { ParameterType } from '@aws-cdk/aws-ssm';
 
 export interface LaptopBackupStackProps extends cdk.StackProps {
   projectName: string;
@@ -54,5 +56,14 @@ export class LaptopBackupStack extends cdk.Stack {
       removalPolicy: RemovalPolicy.RETAIN,
       versioned: true,
     });
+
+    const bucketNameParameter = new ssm.StringParameter(
+      this,
+      'backupBucketNameParameter',
+      {
+        stringValue: backupBucket.bucketName,
+        type: ParameterType.STRING,
+      }
+    );
   }
 }
