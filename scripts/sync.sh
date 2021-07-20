@@ -1,7 +1,5 @@
 #!/bin/bash
 
-DEBUG="${1:-''}"
-
 # Get the current directory where this file is, so that the script can
 # called from other directories without breaking up.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
@@ -40,7 +38,7 @@ function loadProperties {
         fi
     done < "$file"
 
-    if [[ "$DEBUG" == "--debug" ]]; then
+    if [[ "${properties[debug]}" = true ]]; then
         declare -p properties
     fi
 }
@@ -114,7 +112,7 @@ function create_params {
         params+=(--dryrun)
     fi
 
-    if [[ "$DEBUG" == "--debug" ]]; then
+    if [[ "${properties[debug]}" = true ]]; then
         declare -p params
     fi
 }
@@ -174,9 +172,60 @@ function handleFolder {
     reset
 }
 
+function usage {
+    cat << EOF
+Usage: ${0##*/} [-dDh]
+
+    -d, --debug   enable debug mode
+    -D, --dryrun  execute commands in dryrun mode, i.e., don't upload anything
+    -h, --help    display this help and exit
+
+EOF
+}
+
+while getopts ":dDh-:" option; do
+    case "$option" in
+        -)
+            case "${OPTARG}" in
+                debug)
+                    properties[debug]=true
+                    ;;
+                dryrun)
+                    properties[dryrun]=true
+                    ;;
+                help)
+                    # Send output to stderr instead of stdout by using >&2.
+                    usage >&2
+                    exit 2
+                    ;;
+                *)
+                    echo "Unknown option --$OPTARG" >&2
+                    usage >&2
+                    exit 2
+                    ;;
+            esac
+            ;;
+        d)
+            properties[debug]=true
+            ;;
+        D) 
+            properties[dryrun]=true
+            ;;
+        h)
+            usage >&2
+            exit 2
+            ;;
+        *)
+            echo "Unknown option -$OPTARG" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
 # set -x shows the actual commands executed by the script, much better than
 # trying to run echo or printf with each command separately.
-if [[ "$DEBUG" == "--debug" ]]; then
+if [[ "${properties[debug]}" = true ]]; then
     set -x
 fi
 
@@ -202,14 +251,14 @@ fi
 
 # Add the asterisk in the end for the for loop to work, i.e.,
 # to loop through all files in the folder.
-backup_config_folder="$CONFIG_FOLDER/${properties[backup_folder]}*"
+backup_config_path="$CONFIG_FOLDER/${properties[backup_folder]}*"
 
 # Change shell options (shopt) to include filenames beginning with a dot
 # in the file name expansion.
 shopt -s dotglob
 
 # Loop through files in given path, i.e., subfolders of home folder.
-for folder in $backup_config_folder; do
+for folder in $backup_config_path; do
     # Check that file is a folder, and that it's not a symbolic link.
     if [[ -d "$folder" && ! -L "$folder" ]]; then
         handleFolder "$folder" "sync"
@@ -217,6 +266,7 @@ for folder in $backup_config_folder; do
 done
 
 # Also include the files in home folder itself, but use copy to avoid
-# recursion.
-# Remove the asterisk from the end of the config path.
-handleFolder "${backup_config_folder::-1}" "copy"
+# recursion (home folder contains over 500k files, and takes forever to
+# go through them with sync, even with an exclusion pattern).
+# Remove the last character (asterisk) from the end of the config path.
+handleFolder "${backup_config_path::-1}" "copy"
